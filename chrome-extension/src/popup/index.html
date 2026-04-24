@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ContextMind</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      width: 500px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+    }
+
+    .container {
+      padding: 20px;
+      max-height: 600px;
+      overflow-y: auto;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      color: white;
+    }
+
+    .header h1 {
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    .tabs-list {
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+
+    .tab-item {
+      display: flex;
+      align-items: center;
+      padding: 12px;
+      border-bottom: 1px solid #e5e7eb;
+      gap: 12px;
+    }
+
+    .tab-item:last-child {
+      border-bottom: none;
+    }
+
+    .tab-item input[type="checkbox"] {
+      cursor: pointer;
+      width: 18px;
+      height: 18px;
+      accent-color: #667eea;
+    }
+
+    .tab-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .tab-title {
+      font-weight: 500;
+      font-size: 13px;
+      color: #333;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tab-url {
+      font-size: 11px;
+      color: #999;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .badge-ai {
+      background-color: #dbeafe;
+      color: #0369a1;
+    }
+
+    .badge-noise {
+      background-color: #fee2e2;
+      color: #991b1b;
+    }
+
+    .status-messages {
+      background: white;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 20px;
+      display: none;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+
+    .status-messages.active {
+      display: block;
+    }
+
+    .status-item {
+      font-size: 12px;
+      color: #666;
+      padding: 4px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid #e5e7eb;
+      border-top-color: #667eea;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .action-bar {
+      display: flex;
+      gap: 10px;
+    }
+
+    button {
+      flex: 1;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+    }
+
+    .btn-primary:disabled {
+      background: #cbd5e0;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: white;
+      color: #667eea;
+      border: 2px solid #667eea;
+    }
+
+    .btn-secondary:hover {
+      background: #f3f4f6;
+    }
+
+    .error {
+      background: #fee2e2;
+      color: #991b1b;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+
+    .success {
+      background: #dcfce7;
+      color: #166534;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+
+    .summary-card {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .summary-card.show {
+      display: block;
+    }
+
+    .summary-card h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #333;
+    }
+
+    .summary-card p {
+      font-size: 13px;
+      line-height: 1.4;
+      color: #666;
+      margin-bottom: 12px;
+    }
+
+    .copy-btn {
+      width: 100%;
+      background: #10b981;
+      color: white;
+      border: none;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .copy-btn:hover {
+      background: #059669;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>ContextMind</h1>
+    </div>
+
+    <div id="error" class="error" style="display: none;"></div>
+    <div id="success" class="success" style="display: none;"></div>
+
+    <div id="status-messages" class="status-messages">
+      <div class="status-item" id="scanning">
+        <span class="status-spinner"></span>
+        Scanning selected tabs...
+      </div>
+      <div class="status-item" id="extracting" style="display: none;">
+        <span class="status-spinner"></span>
+        Extracting conversations...
+      </div>
+      <div class="status-item" id="fetching" style="display: none;">
+        <span class="status-spinner"></span>
+        Fetching structured data...
+      </div>
+      <div class="status-item" id="compressing" style="display: none;">
+        <span class="status-spinner"></span>
+        Compressing context...
+      </div>
+      <div class="status-item" id="saving" style="display: none;">
+        <span class="status-spinner"></span>
+        Saving to database...
+      </div>
+    </div>
+
+    <div class="tabs-list" id="tabs-list"></div>
+
+    <div id="summary-card" class="summary-card">
+      <h3>Context Saved!</h3>
+      <p id="summary-text"></p>
+      <button class="copy-btn" id="copy-prompt-btn">Copy Prompt (Paste into new AI)</button>
+    </div>
+
+    <div class="action-bar">
+      <button class="btn-primary" id="save-btn">Save Context</button>
+      <button class="btn-secondary" id="refresh-btn">Refresh</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

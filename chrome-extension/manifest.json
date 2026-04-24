@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "ContextMind",
+  "version": "1.0.0",
+  "description": "Save your workflow context with one click",
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "ContextMind"
+  },
+  "background": {
+    "service_worker": "src/background/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content/content.js"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/content/content.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
