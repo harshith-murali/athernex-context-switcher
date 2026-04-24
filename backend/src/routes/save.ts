@@ -1,205 +1,171 @@
 import { Router } from "express";
-import { v4 as uuidv4 } from "uuid";
-import { Session } from "../db.js";
-import { getStructuredContent } from "../mcp/router.js";
+import { Workspace } from "../db.js";
+import { upsertBrowserState, upsertCodeState } from "../utils/dedup.js";
+import { isUsefulUrl, hasContent, truncate } from "../utils/filter.js";
+import { summarizeChat, ChatMessage } from "../utils/summarize.js";
+import { deduplicateMessages } from "../utils/extract.js";
 
 const router = Router();
 
-const AI_DOMAINS = [
-  "claude.ai",
-  "chat.openai.com",
-  "chatgpt.com",
-  "gemini.google.com",
-  "cursor.sh",
-  "perplexity.ai"
-];
+const CONTENT_MAX  = 50_000;   // per browser tab / Google Doc
+const CHAT_MSG_MAX = 100_000;  // per ChatGPT/Claude/Gemini message turn — keep full
 
-function isAITab(url: string): boolean {
-  return AI_DOMAINS.some(domain => url.includes(domain));
-}
-
-interface ChromeTab {
-  url: string;
-  title: string;
-  content: string;
-  favicon?: string;
-}
-
-async function processTab(tab: ChromeTab) {
-  if (isAITab(tab.url)) {
-    // For AI tabs, compress conversation content
-    const lines = tab.content.split("\n").filter(l => l.trim());
-    const compressed = lines.slice(0, 500).join(" ");
-    return {
-      url: tab.url,
-      title: tab.title,
-      content: compressed,
-      sourceType: "ai"
-    };
-  }
-
-  // Try MCP extraction
-  const structured = await getStructuredContent(tab.url);
-  if (structured) {
-    return {
-      url: tab.url,
-      title: structured.title,
-      content: structured.content,
-      sourceType: "mcp"
-    };
-  }
-
-  // Fallback to raw content
-  return {
-    url: tab.url,
-    title: tab.title,
-    content: tab.content.slice(0, 5000),
-    sourceType: "raw"
-  };
-}
-
-function generateSummary(tabs: any[]): string {
-  const aiTabs = tabs.filter(t => t.sourceType === "ai");
-  const workTabs = tabs.length - aiTabs.length;
-
-  return `You were working on ${aiTabs.length} AI conversations and ${workTabs} other tasks.`;
-}
-
-function generatePrimingPrompt(tabs: any[]): string {
-  const tabList = tabs.map(t => `- ${t.title}: ${t.url}`).join("\n");
-
-  return `I was working on the following context. Please review and help me continue:
-
-TABS REVIEWED:
-${tabList}
-
-CONVERSATION HISTORY:
-${tabs.find(t => t.sourceType === "ai")?.content || "No AI conversation found"}
-
-NEXT STEPS:
-Please help me continue from where I left off.`;
-}
+// ── POST /save  (full save from Chrome popup / VS Code) ──────────────────────
 
 router.post("/save", async (req, res) => {
   try {
-    const { chrome, structuredData } = req.body;
-    const userId = (req as any).userId; // From Clerk middleware
+    const { workspaceId, source, timestamp, chrome, vscode } = req.body;
+    const now = timestamp ?? Date.now();
 
-    if (!chrome?.tabs || chrome.tabs.length === 0) {
-      return res.status(400).json({ error: "No tabs provided" });
-    }
+    if (!workspaceId) return res.status(400).json({ error: "Missing workspaceId" });
 
-    // Process all tabs
-    const processedTabs = await Promise.all(
-      chrome.tabs.map(processTab)
-    );
+    const workspace = await Workspace.findOne({ workspaceId });
+    if (!workspace) return res.status(404).json({ error: "Workspace not found" });
 
-    const sessionId = uuidv4();
-    const userSummary = generateSummary(processedTabs);
-    const primingPrompt = generatePrimingPrompt(processedTabs);
+    // ── Browser state ─────────────────────────────────────────
+    if (source === "chrome" && Array.isArray(chrome?.tabs)) {
+      const incoming = chrome.tabs
+        .filter((t: any) => isUsefulUrl(t.url) && hasContent(t.content))
+        .map((t: any) => ({
+          url:      t.url as string,
+          title:    (t.title as string) || "Untitled",
+          content:  truncate(t.content as string, CONTENT_MAX),
+          lastSeen: now,
+        }));
 
-    // Enrich structured data with MCP extractors (YouTube transcripts, etc)
-    let enrichedStructuredData = structuredData;
+      if (incoming.length > 0) {
+        workspace.browserState = upsertBrowserState(workspace.browserState as any, incoming) as any;
+        workspace.markModified("browserState");
+      }
 
-    if (structuredData?.chrome?.tabs) {
-      enrichedStructuredData = {
-        ...structuredData,
-        chrome: {
-          tabs: await Promise.all(
-            structuredData.chrome.tabs.map(async (tab: any) => {
-              // YouTube: Always try to fetch transcript via MCP
-              if (tab.url.includes("youtube.com")) {
-                try {
-                  const structured = await getStructuredContent(tab.url);
-                  if (structured) {
-                    return {
-                      ...tab,
-                      content: structured.content,
-                      transcript: structured.content,
-                      source: "youtube_mcp"
-                    };
-                  }
-                } catch (e) {
-                  console.error("MCP extraction for YouTube failed:", e);
-                }
-              }
-              return tab;
-            })
-          )
-        }
-      };
-    } else if (chrome?.tabs) {
-      // If no structuredData provided, create it from chrome tabs and enrich with MCP
-      const enrichedTabs = await Promise.all(
-        chrome.tabs.map(async (tab: any) => {
-          const tabData: any = {
-            url: tab.url,
-            title: tab.title,
-            isAITab: isAITab(tab.url)
-          };
-
-          if (tabData.isAITab && tab.content) {
-            // For AI tabs, try to extract messages from content
-            tabData.content = tab.content.slice(0, 500);
-          } else if (!tabData.isAITab) {
-            // For non-AI tabs, especially YouTube, try MCP extraction
-            if (tab.url.includes("youtube.com")) {
-              try {
-                const structured = await getStructuredContent(tab.url);
-                if (structured) {
-                  tabData.content = structured.content;
-                  tabData.transcript = structured.content;
-                  tabData.source = "youtube_mcp";
-                }
-              } catch (e) {
-                console.error("MCP YouTube extraction failed:", e);
-                tabData.content = tab.content?.slice(0, 500) || "";
-              }
-            } else {
-              tabData.content = tab.content?.slice(0, 500) || "";
+      // Chat messages from AI tabs
+      const chatMessages: ChatMessage[] = [];
+      for (const tab of chrome.tabs) {
+        if (Array.isArray(tab.messages)) {
+          for (const msg of tab.messages) {
+            if (msg.role && msg.content) {
+              chatMessages.push({
+                role:      msg.role,
+                content:   truncate(msg.content, CHAT_MSG_MAX),
+                timestamp: now,
+              });
             }
           }
-
-          return tabData;
-        })
-      );
-
-      enrichedStructuredData = {
-        source: "chrome",
-        sessionId: `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-        timestamp: Date.now(),
-        chrome: {
-          tabs: enrichedTabs
         }
-      };
+      }
+
+      if (chatMessages.length > 0) {
+        const existing = (workspace.chats as any)?.messages ?? [];
+        const fresh = deduplicateMessages(existing, chatMessages);
+        if (fresh.length > 0) {
+          if (!workspace.chats || !workspace.chats.messages) {
+            workspace.chats = { messages: [], summary: { goal: "", decisions: [], constraints: [], progress: "", nextSteps: [] }, lastSummarizedIndex: 0 };
+          }
+          workspace.chats.messages.push(...fresh);
+          workspace.chats = await summarizeChat(workspace.chats as any) as any;
+          workspace.markModified("chats");
+        }
+      }
     }
 
-    // Save to MongoDB
-    const session = new Session({
-      sessionId,
-      userId,
-      timestamp: Date.now(),
-      chromePayload: {
-        windowId: chrome.windowId,
-        tabsCount: chrome.tabs.length
-      },
-      userSummary,
-      primingPrompt,
-      tabs: processedTabs,
-      structuredData: enrichedStructuredData || undefined
-    });
+    // ── Code state ────────────────────────────────────────────
+    if (source === "vscode" && vscode) {
+      const incoming: any[] = [];
 
-    await session.save();
+      if (vscode.activeFile?.path) {
+        incoming.push({
+          path:     vscode.activeFile.path as string,
+          content:  truncate(vscode.activeFile.content ?? "", CONTENT_MAX),
+          language: vscode.activeFile.language ?? "unknown",
+          lastSeen: now,
+        });
+      }
 
-    res.json({
-      sessionId,
-      status: "success",
-      userSummary,
-      primingPrompt
-    });
-  } catch (err) {
-    console.error("Save error:", err);
-    res.status(500).json({ error: "Failed to save context" });
+      for (const f of vscode.openFiles ?? []) {
+        if (f.path && f.path !== vscode.activeFile?.path) {
+          incoming.push({
+            path:     f.path as string,
+            content:  truncate(f.content ?? "", CONTENT_MAX),
+            language: f.language ?? "unknown",
+            lastSeen: now,
+          });
+        }
+      }
+
+      if (incoming.length > 0) {
+        workspace.codeState = upsertCodeState(workspace.codeState as any, incoming) as any;
+        workspace.markModified("codeState");
+      }
+    }
+
+    workspace.lastUpdated = now;
+    await workspace.save();
+
+    console.log(`✅ /save [${source}] → workspace ${workspaceId}`);
+    res.json({ success: true, workspaceId });
+  } catch (err: any) {
+    console.error("❌ /save error:", err);
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
+// ── POST /auto-save  (content script fires on every AI response) ─────────────
+// Receives only the latest exchange (1-2 messages), deduplicates, and appends.
+
+router.post("/auto-save", async (req, res) => {
+  try {
+    const { workspaceId, messages, url, title } = req.body;
+    const now = Date.now();
+
+    if (!workspaceId || !Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: "Missing workspaceId or messages" });
+    }
+
+    const workspace = await Workspace.findOne({ workspaceId });
+    if (!workspace) return res.status(404).json({ error: "Workspace not found" });
+
+    // Deduplicate against existing history before appending
+    const existing = (workspace.chats as any)?.messages ?? [];
+    const fresh: ChatMessage[] = deduplicateMessages(
+      existing,
+      messages
+        .filter((m: any) => m.role && m.content)
+        .map((m: any) => ({
+          role:      m.role,
+          content:   truncate(m.content, CHAT_MSG_MAX),
+          timestamp: now,
+        }))
+    );
+
+    if (fresh.length > 0) {
+      if (!workspace.chats || !workspace.chats.messages) {
+        workspace.chats = { messages: [], summary: { goal: "", decisions: [], constraints: [], progress: "", nextSteps: [] }, lastSummarizedIndex: 0 };
+      }
+      workspace.chats.messages.push(...fresh);
+      workspace.chats = await summarizeChat(workspace.chats as any) as any;
+      workspace.markModified("chats");
+
+      // Also upsert the AI tab in browserState so the tab card shows up
+      if (url && isUsefulUrl(url)) {
+        const tabEntry = [{
+          url,
+          title:    title || "AI Conversation",
+          content:  fresh.map((m: ChatMessage) => `[${m.role}]: ${m.content}`).join('\n\n').slice(0, CONTENT_MAX),
+          lastSeen: now,
+        }];
+        workspace.browserState = upsertBrowserState(workspace.browserState as any, tabEntry) as any;
+        workspace.markModified("browserState");
+      }
+
+      workspace.lastUpdated = now;
+      await workspace.save();
+      console.log(`⚡ /auto-save → ${fresh.length} new msg(s) → workspace ${workspaceId}`);
+    }
+
+    res.json({ success: true, added: fresh.length });
+  } catch (err: any) {
+    console.error("❌ /auto-save error:", err);
+    res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 

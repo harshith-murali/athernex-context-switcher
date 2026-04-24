@@ -1,53 +1,57 @@
 import mongoose from "mongoose";
 
-const sessionSchema = new mongoose.Schema({
-  sessionId: { type: String, required: true, unique: true },
-  timestamp: { type: Number, required: true },
-  userId: { type: String, required: true },
+const browserEntrySchema = new mongoose.Schema({
+  url:      { type: String, required: true },
+  title:    { type: String, default: "" },
+  content:  { type: String, default: "" },
+  lastSeen: { type: Number, default: 0 }
+}, { _id: false });
 
-  chromePayload: {
-    windowId: String,
-    tabsCount: Number
-  },
+const codeEntrySchema = new mongoose.Schema({
+  path:     { type: String, required: true },
+  content:  { type: String, default: "" },
+  language: { type: String, default: "unknown" },
+  lastSeen: { type: Number, default: 0 }
+}, { _id: false });
 
-  userSummary: String,
-  primingPrompt: String,
+const messageSchema = new mongoose.Schema({
+  role:      { type: String, required: true },
+  content:   { type: String, required: true },
+  timestamp: { type: Number, default: 0 }
+}, { _id: false });
 
-  tabs: [{
-    url: String,
-    title: String,
-    content: String,
-    sourceType: { type: String, enum: ["ai", "mcp", "raw"] }
-  }],
+const summarySchema = new mongoose.Schema({
+  goal:        { type: String, default: "" },
+  decisions:   { type: [String], default: [] },
+  constraints: { type: [String], default: [] },
+  progress:    { type: String, default: "" },
+  nextSteps:   { type: [String], default: [] }
+}, { _id: false });
 
-  structuredData: {
-    source: String,
-    sessionId: String,
-    timestamp: Number,
-    chrome: {
-      tabs: [{
-        url: String,
-        title: String,
-        isAITab: Boolean,
-        messages: [{
-          role: { type: String, enum: ["user", "assistant"] },
-          content: String
-        }],
-        content: String
-      }]
-    }
-  }
+const chatSchema = new mongoose.Schema({
+  messages:             { type: [messageSchema], default: [] },
+  summary:              { type: summarySchema, default: () => ({}) },
+  lastSummarizedIndex:  { type: Number, default: 0 }
+}, { _id: false });
+
+const workspaceSchema = new mongoose.Schema({
+  workspaceId:  { type: String, required: true, unique: true },
+  userId:       { type: String, required: true },
+  name:         { type: String, default: "Unnamed Workspace" },
+  browserState: { type: [browserEntrySchema], default: [] },
+  codeState:    { type: [codeEntrySchema], default: [] },
+  chats:        { type: chatSchema, default: () => ({}) },
+  lastUpdated:  { type: Number, default: 0 }
 }, { timestamps: true });
 
-export const Session = mongoose.model("sessions", sessionSchema);
+workspaceSchema.index({ workspaceId: 1, userId: 1 });
+
+export const Workspace = mongoose.model("workspaces", workspaceSchema);
 
 export async function connectDB() {
   try {
     const mongoUri = process.env.MONGO_URI;
-    if (!mongoUri) {
-      throw new Error("MONGO_URI not provided");
-    }
-
+    if (!mongoUri) throw new Error("MONGO_URI not provided");
     await mongoose.connect(mongoUri);
     console.log("✅ MongoDB connected");
   } catch (err) {

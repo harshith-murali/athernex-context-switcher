@@ -2,32 +2,32 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { connectDB } from "./db.js";
+import workspaceRouter from "./routes/workspace.js";
 import saveRouter from "./routes/save.js";
 import contextRouter from "./routes/context.js";
+import localAuthRouter from "./routes/localAuth.js";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 37218;
 
-// Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
-// Mock Clerk middleware (replace with real Clerk in production)
 app.use((req, res, next) => {
   const token = req.headers.authorization?.replace("Bearer ", "");
-  (req as any).userId = token || "test-user"; // For demo, use token as userId
+  (req as any).userId = token || "test-user";
   next();
 });
 
-// Routes
+app.use(workspaceRouter);
 app.use(saveRouter);
 app.use(contextRouter);
+app.use(localAuthRouter);
 
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
-});
+app.get("/", (_req, res) => res.send("ContextMind backend running"));
+app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
 async function start() {
   await connectDB();

@@ -1,72 +1,130 @@
-// ─────────────────────────────────────────────────────────────
-//  ContextMind · extension.ts
-//  Entry point: registers commands, builds the status-bar button,
-//  and wires everything together.
-// ─────────────────────────────────────────────────────────────
-
 import * as vscode from 'vscode';
 import { captureContext } from './capture';
-import { buildAndSend } from './bridge';
+import { buildAndSend, fetchWorkspaces } from './bridge';
 import { log } from './utils';
 
-// ── Constants ────────────────────────────────────────────────
-const COMMAND_ID   = 'contextmind.saveContext';
-const STATUS_TEXT  = '$(save) Save Context';
-const STATUS_SAVING = '$(sync~spin) Saving…';
-const STATUS_TOOLTIP = 'ContextMind · Click to save your current context';
+const WORKSPACE_KEY    = 'contextmind_workspace';
+const COMMAND_SAVE     = 'contextmind.saveContext';
+const COMMAND_SHOW_WID = 'contextmind.showWorkspaceId';
+const COMMAND_SET_WID  = 'contextmind.setWorkspaceId';
+const COMMAND_RESET    = 'contextmind.resetSession';
+const STATUS_IDLE      = '$(save) Save Context';
+const STATUS_BUSY      = '$(sync~spin) Saving…';
 
-// ── Extension activate ────────────────────────────────────────
+async function getOrCreateWorkspaceId(context: vscode.ExtensionContext): Promise<string> {
+  let workspaces: any[];
+  try {
+    workspaces = await fetchWorkspaces();
+  } catch (err: any) {
+    if (err.message === "Not synced") {
+      vscode.window.showErrorMessage("❌ Please open the ContextMind Chrome Extension once to sync your account locally.");
+      throw new Error("Local account not synced");
+    }
+    throw err;
+  }
+
+  if (workspaces.length === 0) {
+    vscode.window.showErrorMessage("❌ No workspaces found. Create one in the Chrome extension first.");
+    throw new Error("No workspaces available");
+  }
+
+  const items: (vscode.QuickPickItem & { workspaceId: string })[] = workspaces.map((w: any) => ({
+    label: w.name,
+    description: w.workspaceId.slice(0, 8) + '...',
+    workspaceId: w.workspaceId
+  }));
+
+  const lastWid = context.globalState.get<string>(WORKSPACE_KEY);
+  if (lastWid) {
+    const lastUsed = items.find(i => i.workspaceId === lastWid);
+    if (lastUsed) {
+      lastUsed.detail = "(Last used)";
+      items.sort((a, b) => a === lastUsed ? -1 : b === lastUsed ? 1 : 0);
+    }
+  }
+
+  const selected = await vscode.window.showQuickPick(items, {
+    placeHolder: 'Select a ContextMind workspace to save context to',
+    ignoreFocusOut: true
+  });
+
+  if (!selected) {
+    throw new Error('Workspace selection cancelled.');
+  }
+
+  const wid = selected.workspaceId;
+  await context.globalState.update(WORKSPACE_KEY, wid);
+  log.info(`✅ Selected workspace: ${wid}`);
+  return wid;
+}
 
 export function activate(context: vscode.ExtensionContext): void {
   log.info('ContextMind is now active.');
 
-  // ── Status-bar button ──
-  const statusBar = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Right,
-    100,
-  );
-  statusBar.text    = STATUS_TEXT;
-  statusBar.tooltip = STATUS_TOOLTIP;
-  statusBar.command = COMMAND_ID;
+  const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  statusBar.text    = STATUS_IDLE;
+  statusBar.tooltip = 'ContextMind · Click to save your current context';
+  statusBar.command = COMMAND_SAVE;
   statusBar.show();
 
-  // ── Command: contextmind.saveContext ──
-  const saveCommand = vscode.commands.registerCommand(COMMAND_ID, async () => {
-    // Optimistic UI: update status bar immediately
-    statusBar.text    = STATUS_SAVING;
-    statusBar.tooltip = 'ContextMind · Capturing context…';
-
+  // ── Save Context ──────────────────────────────────────────────
+  const saveCmd = vscode.commands.registerCommand(COMMAND_SAVE, async () => {
     try {
-      log.info('Save Context triggered.');
-
-      // 1. Capture
-      const vscodeContext = await captureContext();
-
-      // 2. Send
-      const result = await buildAndSend(vscodeContext);
+      const workspaceId  = await getOrCreateWorkspaceId(context);
+      statusBar.text = STATUS_BUSY;
+      const vscodeCtx    = await captureContext();
+      const result       = await buildAndSend(vscodeCtx, workspaceId);
 
       if (result.ok) {
-        log.info('Context saved successfully.');
-        vscode.window.showInformationMessage('✅ Context saved');
+        vscode.window.showInformationMessage(`✅ Context saved  |  Workspace: ${workspaceId.slice(0, 8)}…`);
       } else {
-        log.warn(`Save failed: ${result.message}`);
-        vscode.window.showErrorMessage('❌ Failed to save context');
+        vscode.window.showErrorMessage(`❌ Failed to save context: ${result.message}`);
       }
     } catch (err: unknown) {
-      log.error('Unexpected error during save.', err);
-      vscode.window.showErrorMessage('❌ Failed to save context');
+      log.error('Save aborted or failed.', err);
+      if (err instanceof Error && err.message !== 'Workspace selection cancelled.' && err.message !== 'Local account not synced' && err.message !== 'No workspaces available') {
+        vscode.window.showErrorMessage('❌ Failed to save context');
+      }
     } finally {
-      // Restore status bar
-      statusBar.text    = STATUS_TEXT;
-      statusBar.tooltip = STATUS_TOOLTIP;
+      statusBar.text = STATUS_IDLE;
     }
   });
 
-  // Register disposables so VS Code cleans up on deactivate
-  context.subscriptions.push(saveCommand, statusBar);
-}
+  // ── Show Workspace ID ─────────────────────────────────────────
+  const showCmd = vscode.commands.registerCommand(COMMAND_SHOW_WID, async () => {
+    const wid = await getOrCreateWorkspaceId(context);
+    const choice = await vscode.window.showInformationMessage(
+      `ContextMind Workspace ID:\n${wid}`,
+      'Copy to Clipboard',
+      'Close'
+    );
+    if (choice === 'Copy to Clipboard') {
+      await vscode.env.clipboard.writeText(wid);
+      vscode.window.showInformationMessage('✅ Workspace ID copied!');
+    }
+  });
 
-// ── Extension deactivate ─────────────────────────────────────
+  // ── Set Workspace ID ──────────────────────────────────────────
+  const setCmd = vscode.commands.registerCommand(COMMAND_SET_WID, async () => {
+    const input = await vscode.window.showInputBox({
+      prompt:        'Paste a Workspace ID to sync with the Chrome extension.',
+      placeHolder:   'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+      ignoreFocusOut: true
+    });
+    if (input?.trim()) {
+      await context.globalState.update(WORKSPACE_KEY, input.trim());
+      vscode.window.showInformationMessage(`✅ Workspace synced: ${input.trim().slice(0, 8)}…`);
+    }
+  });
+
+  // ── Reset Workspace ───────────────────────────────────────────
+  const resetCmd = vscode.commands.registerCommand(COMMAND_RESET, async () => {
+    await context.globalState.update(WORKSPACE_KEY, undefined);
+    vscode.window.showInformationMessage('Workspace selection reset. Next time you save, you will be prompted to pick a workspace.');
+  });
+
+  context.subscriptions.push(saveCmd, showCmd, setCmd, resetCmd, statusBar);
+}
 
 export function deactivate(): void {
   log.info('ContextMind deactivated.');

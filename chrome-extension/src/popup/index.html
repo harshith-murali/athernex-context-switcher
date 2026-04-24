@@ -5,286 +5,510 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ContextMind</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --accent: #a78bfa;
+      --accent-glow: rgba(167, 139, 250, 0.15);
+      --accent-success: #34d399;
+      --accent-danger: #f87171;
+      --bg: #0f1115;
+      --bg-surface: rgba(255, 255, 255, 0.03);
+      --bg-hover: rgba(255, 255, 255, 0.06);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #f9fafb;
+      --text-secondary: #9ca3af;
+      --text-muted: #6b7280;
+      --radius: 12px;
+      --radius-sm: 8px;
     }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      width: 500px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: #333;
+      font-family: 'Inter', -apple-system, sans-serif;
+      width: 380px;
+      min-height: 300px;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
     }
 
-    .container {
-      padding: 20px;
-      max-height: 600px;
-      overflow-y: auto;
-    }
-
-    .header {
+    /* ── Top bar ── */
+    .topbar {
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 20px;
-      color: white;
+      justify-content: space-between;
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid var(--border);
     }
 
-    .header h1 {
-      font-size: 24px;
-      font-weight: 600;
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
-    .tabs-list {
-      background: white;
+    .brand-icon {
+      width: 28px;
+      height: 28px;
+      background: var(--accent);
       border-radius: 8px;
-      overflow: hidden;
-      margin-bottom: 20px;
-    }
-
-    .tab-item {
       display: flex;
       align-items: center;
-      padding: 12px;
-      border-bottom: 1px solid #e5e7eb;
-      gap: 12px;
+      justify-content: center;
+      color: white;
+      flex-shrink: 0;
     }
 
-    .tab-item:last-child {
-      border-bottom: none;
+    .brand-name {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      color: var(--text);
     }
 
-    .tab-item input[type="checkbox"] {
-      cursor: pointer;
-      width: 18px;
-      height: 18px;
-      accent-color: #667eea;
+    .status-chip {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      color: var(--text-secondary);
     }
 
-    .tab-info {
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      transition: background 0.3s;
+    }
+    .status-dot.connected { background: var(--accent-success); box-shadow: 0 0 6px var(--accent-success); }
+    .status-dot.error     { background: var(--accent-danger); }
+
+    /* ── Workspace bar ── */
+    .workspace-bar {
+      margin: 12px 14px;
+      padding: 10px 14px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .workspace-info {
       flex: 1;
       min-width: 0;
     }
 
-    .tab-title {
-      font-weight: 500;
-      font-size: 13px;
-      color: #333;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .tab-url {
-      font-size: 11px;
-      color: #999;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-top: 2px;
-    }
-
-    .badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 3px;
+    .workspace-label {
       font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 2px;
     }
 
-    .badge-ai {
-      background-color: #dbeafe;
-      color: #0369a1;
+    .workspace-id {
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 200px;
     }
 
-    .badge-noise {
-      background-color: #fee2e2;
-      color: #991b1b;
+    .workspace-action {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
+    .workspace-action:hover { opacity: 0.75; }
 
-    .status-messages {
-      background: white;
-      border-radius: 8px;
-      padding: 12px;
-      margin-bottom: 20px;
-      display: none;
-      max-height: 120px;
-      overflow-y: auto;
+    /* ── Custom Select ── */
+    .custom-select {
+      position: relative;
+      width: 100%;
+      margin-top: 4px;
     }
-
-    .status-messages.active {
-      display: block;
-    }
-
-    .status-item {
+    .select-selected {
+      background: var(--bg-surface);
+      color: var(--text);
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
       font-size: 12px;
-      color: #666;
-      padding: 4px 0;
+      user-select: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: border-color 0.2s;
+    }
+    .select-selected:hover { border-color: var(--accent); }
+    .select-selected:after {
+      content: "▼";
+      font-size: 8px;
+      color: var(--text-muted);
+    }
+    .select-items {
+      position: absolute;
+      background-color: #1a1c23;
+      border: 1px solid var(--border);
+      top: 100%;
+      left: 0;
+      right: 0;
+      z-index: 99;
+      border-radius: var(--radius-sm);
+      max-height: 150px;
+      overflow-y: auto;
+      margin-top: 4px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    .select-items::-webkit-scrollbar { width: 3px; }
+    .select-items::-webkit-scrollbar-track { background: transparent; }
+    .select-items::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .select-items div {
+      color: var(--text);
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background 0.1s;
+    }
+    .select-items div:hover {
+      background-color: var(--accent);
+      color: white;
+    }
+    .select-hide {
+      display: none;
+    }
+
+    /* ── Tabs section ── */
+    .section {
+      padding: 0 14px 10px;
+    }
+
+    .section-header {
       display: flex;
       align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .tab-controls {
+      display: flex;
       gap: 6px;
     }
 
-    .status-spinner {
-      display: inline-block;
-      width: 12px;
-      height: 12px;
-      border: 2px solid #e5e7eb;
-      border-top-color: #667eea;
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    .action-bar {
-      display: flex;
-      gap: 10px;
-    }
-
-    button {
-      flex: 1;
-      padding: 12px 20px;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
+    .tab-control-btn {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-size: 10px;
       font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 12px;
       cursor: pointer;
       transition: all 0.2s;
     }
-
-    .btn-primary {
-      background: #667eea;
-      color: white;
+    .tab-control-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text);
+      border-color: var(--text-muted);
     }
 
-    .btn-primary:hover {
-      background: #5568d3;
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
     }
 
-    .btn-primary:disabled {
-      background: #cbd5e0;
-      cursor: not-allowed;
+    .tab-count {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--accent-glow);
+      padding: 2px 8px;
+      border-radius: 10px;
     }
 
-    .btn-secondary {
-      background: white;
-      color: #667eea;
-      border: 2px solid #667eea;
+    .tabs-list {
+      max-height: 200px;
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding-bottom: 4px;
     }
 
-    .btn-secondary:hover {
-      background: #f3f4f6;
+    .tabs-list::-webkit-scrollbar { width: 3px; }
+    .tabs-list::-webkit-scrollbar-track { background: transparent; }
+    .tabs-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .tab-item {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 10px 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
     }
 
-    .error {
-      background: #fee2e2;
-      color: #991b1b;
-      padding: 12px;
-      border-radius: 8px;
-      margin-bottom: 12px;
-      font-size: 13px;
+    .tab-item:hover { 
+      background: var(--bg-hover);
+      border-color: var(--text-muted);
     }
 
-    .success {
-      background: #dcfce7;
-      color: #166534;
-      padding: 12px;
-      border-radius: 8px;
-      margin-bottom: 12px;
-      font-size: 13px;
+    .tab-item.selected {
+      background: var(--accent-glow);
+      border-color: var(--accent);
     }
 
-    .summary-card {
-      background: white;
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 20px;
+    .tab-item input[type="checkbox"] {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      accent-color: var(--accent);
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+      border-radius: 4px;
+      pointer-events: none;
+    }
+
+    .tab-icon {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      margin-bottom: 6px;
+    }
+
+    .tab-title {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      line-height: 1.4;
+      padding-right: 14px; /* Space for absolute checkbox */
+    }
+
+    .tab-url {
+      font-size: 10px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 1px;
+    }
+
+    .badge {
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+    .badge-ai    { background: #ede9fe; color: #7c3aed; }
+    .badge-noise { background: #fee2e2; color: #b91c1c; }
+
+    /* ── Divider ── */
+    .divider { height: 1px; background: var(--border); margin: 0 14px 12px; }
+
+    /* ── Status messages ── */
+    .status-msg {
+      margin: 0 14px 10px;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 500;
       display: none;
     }
 
-    .summary-card.show {
-      display: block;
+    .status-msg.error   { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+    .status-msg.success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+
+    /* ── Saving progress ── */
+    .saving-bar {
+      margin: 0 14px 10px;
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      color: var(--text-secondary);
     }
 
-    .summary-card h3 {
-      font-size: 14px;
-      font-weight: 600;
-      margin-bottom: 8px;
-      color: #333;
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
     }
 
-    .summary-card p {
-      font-size: 13px;
-      line-height: 1.4;
-      color: #666;
-      margin-bottom: 12px;
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Actions ── */
+    .actions {
+      padding: 10px 14px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
 
-    .copy-btn {
+    .btn-save {
       width: 100%;
-      background: #10b981;
+      padding: 12px;
+      background: var(--accent);
       color: white;
       border: none;
-      padding: 8px;
-      border-radius: 6px;
-      font-size: 12px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 700;
       cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s;
+      letter-spacing: -0.01em;
     }
 
-    .copy-btn:hover {
-      background: #059669;
+    .btn-save:hover:not(:disabled) {
+      background: #7c3aed;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px var(--accent-glow);
+    }
+
+    .btn-save:active { transform: translateY(0); }
+
+    .btn-save:disabled {
+      background: var(--bg-hover);
+      color: var(--text-muted);
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .btn-save.success-state {
+      background: var(--accent-success);
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-secondary {
+      flex: 1;
+      padding: 9px 12px;
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-hover);
+      color: var(--text);
+      border-color: var(--text-muted);
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>ContextMind</h1>
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+          <polyline points="2 17 12 22 22 17"/>
+          <polyline points="2 12 12 17 22 12"/>
+        </svg>
+      </div>
+      <span class="brand-name">ContextMind</span>
     </div>
+    <div class="status-chip" id="status-chip">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">Checking…</span>
+    </div>
+  </div>
 
-    <div id="error" class="error" style="display: none;"></div>
-    <div id="success" class="success" style="display: none;"></div>
+  <!-- Workspace bar — rendered dynamically by popup.js based on auth state -->
+  <div class="workspace-bar" id="workspace-bar">
+    <div style="flex:1;min-width:0">
+      <div class="workspace-label">Workspace</div>
+      <div class="workspace-id" id="workspace-id-display">Detecting…</div>
+    </div>
+  </div>
 
-    <div id="status-messages" class="status-messages">
-      <div class="status-item" id="scanning">
-        <span class="status-spinner"></span>
-        Scanning selected tabs...
+  <!-- Tabs -->
+  <div class="section">
+    <div class="section-header">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="section-title">Tabs to save</span>
+        <span class="tab-count" id="tab-count">0</span>
       </div>
-      <div class="status-item" id="extracting" style="display: none;">
-        <span class="status-spinner"></span>
-        Extracting conversations...
-      </div>
-      <div class="status-item" id="fetching" style="display: none;">
-        <span class="status-spinner"></span>
-        Fetching structured data...
-      </div>
-      <div class="status-item" id="compressing" style="display: none;">
-        <span class="status-spinner"></span>
-        Compressing context...
-      </div>
-      <div class="status-item" id="saving" style="display: none;">
-        <span class="status-spinner"></span>
-        Saving to database...
+      <div class="tab-controls">
+        <button class="tab-control-btn" id="btn-select-all">All</button>
+        <button class="tab-control-btn" id="btn-select-none">None</button>
+        <button class="tab-control-btn" id="btn-select-current">Current</button>
       </div>
     </div>
-
     <div class="tabs-list" id="tabs-list"></div>
+  </div>
 
-    <div id="summary-card" class="summary-card">
-      <h3>Context Saved!</h3>
-      <p id="summary-text"></p>
-      <button class="copy-btn" id="copy-prompt-btn">Copy Prompt (Paste into new AI)</button>
-    </div>
+  <div class="divider"></div>
 
-    <div class="action-bar">
-      <button class="btn-primary" id="save-btn">Save Context</button>
-      <button class="btn-secondary" id="refresh-btn">Refresh</button>
+  <!-- Status messages -->
+  <div class="status-msg" id="error-msg"></div>
+  <div class="status-msg" id="success-msg"></div>
+
+  <!-- Saving indicator -->
+  <div class="saving-bar" id="saving-bar">
+    <div class="spinner"></div>
+    <span id="saving-text">Saving context…</span>
+  </div>
+
+  <!-- Actions -->
+  <div class="actions">
+    <button class="btn-save" id="save-btn">Save Context</button>
+    <div class="row">
+      <button class="btn-secondary" id="refresh-btn">Refresh Tabs</button>
     </div>
   </div>
 

@@ -1,8 +1,3 @@
-// ─────────────────────────────────────────────────────────────
-//  ContextMind · types.ts
-//  Canonical payload interfaces shared across all modules.
-// ─────────────────────────────────────────────────────────────
-
 export type FileType = 'active' | 'supporting';
 
 export interface CapturedFile {
@@ -19,10 +14,10 @@ export interface CursorPosition {
 }
 
 export interface Layer1Context {
-  packageJson: string;   // raw JSON string or ''
-  requirements: string;  // raw text or ''
-  envKeys: string[];     // only key names, never values
-  structure: string[];   // shallow file listing, max ~50 entries
+  packageJson: string;
+  requirements: string;
+  envKeys: string[];
+  structure: string[];
 }
 
 export interface VSCodeContext {
@@ -44,11 +39,27 @@ export interface DiagnosticEntry {
   line: number;
 }
 
+export interface ActiveFilePayload {
+  path: string;
+  content: string;
+  language: string;
+}
+
+export interface OpenFilePayload {
+  path: string;
+  content: string;
+  language: string;
+}
+
 export interface ContextPayload {
   source: 'vscode';
-  sessionId: string;   // vscode.env.sessionId — matches Chrome extension session
+  workspaceId: string;
   timestamp: number;
-  vscode: VSCodeContext;
+  vscode: {
+    activeFile: ActiveFilePayload | null;
+    openFiles: OpenFilePayload[];
+    git?: { branch: string };
+  };
 }
 
 export interface SaveResponse {

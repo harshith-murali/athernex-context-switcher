@@ -1,38 +1,41 @@
 import { StructuredContent } from "./router.js";
+import { YoutubeTranscript } from "youtube-transcript";
 
+// 🔹 Main extractor
 export async function youtubeExtract(url: string): Promise<StructuredContent> {
-  console.log("🎥 [YouTube] Starting extraction for URL:", url);
   try {
     const videoId = extractVideoId(url);
-    console.log("🎥 [YouTube] Extracted videoId:", videoId);
-    if (!videoId) {
-      throw new Error("Invalid YouTube URL");
-    }
+    if (!videoId) throw new Error("Invalid YouTube URL");
 
-    console.log("🎥 [YouTube] Fetching video metadata and description");
-    const { title, description } = await getVideoMetadata(videoId);
-    console.log("🎥 [YouTube] Video title:", title);
+    const { title, transcript } = await getVideoContent(videoId);
 
-    const result: StructuredContent = {
-      source: "youtube" as const,
+    const chunks = chunkText(transcript, 400);
+
+    return {
+      source: "youtube",
       title: `YouTube: ${title}`,
-      metadata: { url, videoId },
-      content: description
+      metadata: {
+        url,
+        videoId,
+        chunkCount: chunks.length
+      },
+      content: chunks.join("\n\n---CHUNK---\n\n")
     };
-    console.log("🎥 [YouTube] Successfully extracted, content length:", description.length);
-    return result;
+
   } catch (error) {
-    console.error("❌ [YouTube] Error during extraction:", error);
-    const result: StructuredContent = {
-      source: "youtube" as const,
-      title: `YouTube: ${url.split("/").pop()}`,
-      metadata: { url, error: String(error) },
-      content: `[Error fetching content: ${String(error)}]`
+    return {
+      source: "youtube",
+      title: `YouTube: ${url}`,
+      metadata: {
+        url,
+        error: String(error)
+      },
+      content: `[Error: ${String(error)}]`
     };
-    return result;
   }
 }
 
+// 🔹 Extract video ID
 function extractVideoId(url: string): string | null {
   const patterns = [
     /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
@@ -43,33 +46,69 @@ function extractVideoId(url: string): string | null {
     const match = url.match(pattern);
     if (match) return match[1];
   }
+
   return null;
 }
 
-async function getVideoMetadata(videoId: string): Promise<{
+// 🔹 Fetch title + transcript
+async function getVideoContent(videoId: string): Promise<{
   title: string;
-  description: string;
+  transcript: string;
 }> {
+  let title = videoId;
+
+  // ✅ Fetch title from oEmbed
   try {
     const oembedUrl = `https://www.youtube.com/oembed?url=https://youtube.com/watch?v=${videoId}&format=json`;
-    console.log("🎥 [Metadata] Fetching from oEmbed:", oembedUrl);
-    const response = await fetch(oembedUrl);
-    console.log("🎥 [Metadata] oEmbed response status:", response.status);
-    if (response.ok) {
-      const data = await response.json() as any;
-      console.log("🎥 [Metadata] Retrieved title:", data.title);
-      return {
-        title: data.title,
-        description: data.title
-      };
+    const res = await fetch(oembedUrl);
+
+    if (res.ok) {
+      const data = await res.json() as any;
+      title = data.title;
     }
   } catch (err) {
-    console.warn("🎥 [Metadata] oEmbed fetch failed:", err);
+    console.warn("oEmbed failed:", err);
   }
 
-  console.log("🎥 [Metadata] Using videoId as fallback");
+  // ✅ Fetch transcript
+  let transcriptText = "";
+
+  try {
+    const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+
+    transcriptText = transcript
+      .map(item => item.text)
+      .join(" ");
+  } catch (err) {
+    console.warn("Transcript fetch failed:", err);
+    transcriptText = "[No transcript available]";
+  }
+
   return {
-    title: videoId,
-    description: `YouTube video: ${videoId}`
+    title,
+    transcript: transcriptText
   };
+}
+
+// 🔹 Chunking function (LLM-safe)
+function chunkText(text: string, maxWords = 400): string[] {
+  const words = text.split(/\s+/);
+  const chunks: string[] = [];
+
+  let current: string[] = [];
+
+  for (const word of words) {
+    current.push(word);
+
+    if (current.length >= maxWords) {
+      chunks.push(current.join(" "));
+      current = [];
+    }
+  }
+
+  if (current.length > 0) {
+    chunks.push(current.join(" "));
+  }
+
+  return chunks;
 }

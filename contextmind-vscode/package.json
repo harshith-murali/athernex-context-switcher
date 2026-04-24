@@ -23,9 +23,24 @@
     "commands": [
       {
         "command": "contextmind.saveContext",
-        "title": "ContextMind: Save Context",
+        "title": "Save Context",
         "category": "ContextMind",
         "icon": "$(save)"
+      },
+      {
+        "command": "contextmind.showWorkspaceId",
+        "title": "Show Workspace ID",
+        "category": "ContextMind"
+      },
+      {
+        "command": "contextmind.setWorkspaceId",
+        "title": "Set Workspace ID",
+        "category": "ContextMind"
+      },
+      {
+        "command": "contextmind.resetSession",
+        "title": "Reset Workspace",
+        "category": "ContextMind"
       }
     ],
     "keybindings": [
