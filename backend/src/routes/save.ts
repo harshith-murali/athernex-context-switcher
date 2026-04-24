@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { Session } from "../db.ts";
-import { getStructuredContent } from "../mcp/router.ts";
+import { Session } from "../db.js";
+import { getStructuredContent } from "../mcp/router.js";
 
 const router = Router();
 

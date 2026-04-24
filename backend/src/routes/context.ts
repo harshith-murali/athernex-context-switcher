@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { Session } from "../db.ts";
+import { Session } from "../db.js";
 
 const router = Router();
 

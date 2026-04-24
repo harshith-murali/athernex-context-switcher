@@ -1,9 +1,9 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { connectDB } from "./db.ts";
-import saveRouter from "./routes/save.ts";
-import contextRouter from "./routes/context.ts";
+import { connectDB } from "./db.js";
+import saveRouter from "./routes/save.js";
+import contextRouter from "./routes/context.js";
 
 dotenv.config();
 

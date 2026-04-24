@@ -1,7 +1,7 @@
-import { youtubeExtract } from "./youtube.ts";
-import { githubExtract } from "./github.ts";
-import { notionExtract } from "./notion.ts";
-import { gdocsExtract } from "./gdocs.ts";
+import { youtubeExtract } from "./youtube.js";
+import { githubExtract } from "./github.js";
+import { notionExtract } from "./notion.js";
+import { gdocsExtract } from "./gdocs.js";
 
 export interface StructuredContent {
   source: "youtube" | "github" | "notion" | "gdocs";
