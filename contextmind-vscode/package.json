@@ -1,0 +1,65 @@
+{
+  "name": "contextmind",
+  "displayName": "ContextMind",
+  "description": "Intelligently captures your current working context and syncs it to your ContextMind backend.",
+  "version": "0.1.0",
+  "publisher": "contextmind",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "AI"
+  ],
+  "keywords": [
+    "context",
+    "AI",
+    "developer tools",
+    "productivity"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "contextmind.saveContext",
+        "title": "ContextMind: Save Context",
+        "category": "ContextMind",
+        "icon": "$(save)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "contextmind.saveContext",
+        "key": "ctrl+alt+s",
+        "mac": "cmd+alt+s",
+        "when": "editorFocus"
+      }
+    ],
+    "configuration": {
+      "title": "ContextMind",
+      "properties": {
+        "contextmind.backendUrl": {
+          "type": "string",
+          "default": "http://localhost:37218/save",
+          "description": "URL of the ContextMind FastAPI backend endpoint."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  }
+}
