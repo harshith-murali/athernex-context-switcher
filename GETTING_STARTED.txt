@@ -1,0 +1,213 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                           ContextMind                                       ║
+║                    Chrome Extension + Backend                               ║
+║                                                                              ║
+║  Save your AI workflow context with one click. Resume without re-explaining ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+🚀 QUICK START (2 minutes)
+
+Step 1: Start Backend
+─────────────────────────────────────────────────────────────────────────────
+  cd backend
+  npm run dev
+  
+  Expected:
+    ✅ MongoDB connected
+    🚀 Server running on http://localhost:37218
+
+Step 2: Load Extension in Chrome
+─────────────────────────────────────────────────────────────────────────────
+  1. Open Chrome → chrome://extensions/
+  2. Toggle "Developer mode" (top right)
+  3. Click "Load unpacked"
+  4. Select: chrome-extension folder
+  5. Click "Select Folder"
+  
+  Result: ContextMind icon appears in toolbar
+
+Step 3: Test It
+─────────────────────────────────────────────────────────────────────────────
+  1. Open multiple tabs:
+     - https://claude.ai (AI conversation)
+     - https://github.com (work)
+     - https://youtube.com (noise)
+  
+  2. Click ContextMind icon in toolbar
+  
+  3. In popup, verify:
+     ✅ Claude tab is checked (blue "AI" badge)
+     ✅ GitHub tab is checked
+     ❌ YouTube tab is unchecked (gray "Noise" badge)
+  
+  4. Click "Save Context" button
+  
+  5. Watch status messages:
+     ⏳ Scanning selected tabs...
+     ⏳ Extracting conversations...
+     ⏳ Fetching structured data...
+     ⏳ Compressing context...
+     ⏳ Saving to database...
+  
+  6. Success! See:
+     ✅ Green success message
+     📋 Summary card: "You were working on..."
+     📋 Copy button: "Copy Prompt (Paste into new AI)"
+
+Done! Your context is saved in MongoDB. 🎉
+
+─────────────────────────────────────────────────────────────────────────────
+
+📚 DOCUMENTATION
+
+Quick Guides:
+  • QUICKSTART.md ................ 2-minute setup
+  • DEMO.md ...................... Full demo walkthrough
+  • README.md .................... Features & API docs
+
+Developer Guides:
+  • DEV_SETUP.md ................. Development workflow
+  • IMPLEMENTATION.md ............ Architecture & decisions
+  • BUILD_STATUS.md .............. Build checklist
+
+Technical:
+  • test-api.sh .................. API testing script
+  • verify-build.sh .............. Build verification
+
+─────────────────────────────────────────────────────────────────────────────
+
+🧪 TEST THE API (Optional)
+
+From project root:
+  ./test-api.sh
+
+Or use curl:
+  curl http://localhost:37218/health
+
+─────────────────────────────────────────────────────────────────────────────
+
+⚙️ ARCHITECTURE
+
+User Browser
+    ↓
+Chrome Extension Popup
+    ├─ Lists all open tabs
+    ├─ Shows classification badges (AI/work/noise)
+    └─ User selects which tabs to save
+    ↓
+Content Scripts (extract tab text)
+    ↓
+POST /save API (backend)
+    ├─ Process tabs (compress, extract, fallback)
+    ├─ Generate summary
+    ├─ Generate priming prompt
+    └─ Store in MongoDB
+    ↓
+Response with session ID
+    ↓
+Extension shows summary + copy button
+    ↓
+User copies priming prompt
+    ↓
+Pastes into new AI chat → No re-explaining needed! ✨
+
+─────────────────────────────────────────────────────────────────────────────
+
+🔑 KEY FEATURES
+
+✅ One-Click Context Saving
+   Click button → Everything captured
+
+✅ Smart Tab Classification
+   • AI domains: claude.ai, openai.com, gemini.google.com, etc
+   • Work domains: github.com, notion.com, etc
+   • Noise domains: youtube.com, netflix.com, twitter.com, etc
+
+✅ Intelligent Content Extraction
+   • AI conversations: extracted & compressed
+   • Other content: MCP extraction or raw text fallback
+
+✅ Priming Prompts
+   Copy → Paste into new AI → Ready to resume
+
+✅ MongoDB Persistence
+   Sessions stored forever, retrieve anytime
+
+✅ Error Handling
+   Graceful fallbacks, never lose data
+
+─────────────────────────────────────────────────────────────────────────────
+
+🐛 TROUBLESHOOTING
+
+Backend won't start?
+  Error: MONGO_URI not provided
+  → Check backend/.env has MongoDB connection string
+
+Extension not loading?
+  → Reload: chrome://extensions/ → click ↻ next to ContextMind
+
+No tabs showing in popup?
+  → Reload extension: chrome://extensions/ → click ↻
+  → Open new tab and try again
+
+Content not saving?
+  → Open DevTools (F12) → Console
+  → Look for red error messages
+  → Check backend console for details
+
+Port 37218 in use?
+  lsof -ti:37218 | xargs kill
+  npm run dev
+
+─────────────────────────────────────────────────────────────────────────────
+
+📊 WHAT'S STORED IN MONGODB
+
+{
+  sessionId: "uuid-xxx",
+  userId: "clerk-user-or-test",
+  timestamp: 1234567890000,
+  
+  userSummary: "You were working on 2 AI conversations and 1 work tab",
+  primingPrompt: "I was working on the following context...",
+  
+  tabs: [
+    {
+      url: "https://claude.ai/chat",
+      title: "Claude Conversation",
+      content: "User: ... Assistant: ...",
+      sourceType: "ai"    // or "mcp" or "raw"
+    },
+    ...
+  ]
+}
+
+─────────────────────────────────────────────────────────────────────────────
+
+💡 PRO TIPS
+
+1. Use checkboxes to exclude noisy tabs before saving
+2. Copy the priming prompt immediately after saving
+3. Check MongoDB periodically to see your context history
+4. Open DevTools (F12) to debug extraction issues
+5. Reload extension (chrome://extensions/) after changes
+
+─────────────────────────────────────────────────────────────────────────────
+
+🎉 THAT'S IT!
+
+You're ready to use ContextMind.
+
+Save your context, resume your work, never re-explain again.
+
+Questions? Check the docs:
+  • README.md for features
+  • DEMO.md for walkthrough
+  • DEV_SETUP.md for development
+
+Happy coding! 🚀
+
+─────────────────────────────────────────────────────────────────────────────
+Built for hackathons. Production-ready. One click. Zero re-explaining.
+─────────────────────────────────────────────────────────────────────────────
