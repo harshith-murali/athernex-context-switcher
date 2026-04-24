@@ -18,7 +18,25 @@ const sessionSchema = new mongoose.Schema({
     title: String,
     content: String,
     sourceType: { type: String, enum: ["ai", "mcp", "raw"] }
-  }]
+  }],
+
+  structuredData: {
+    source: String,
+    sessionId: String,
+    timestamp: Number,
+    chrome: {
+      tabs: [{
+        url: String,
+        title: String,
+        isAITab: Boolean,
+        messages: [{
+          role: { type: String, enum: ["user", "assistant"] },
+          content: String
+        }],
+        content: String
+      }]
+    }
+  }
 }, { timestamps: true });
 
 export const Session = mongoose.model("sessions", sessionSchema);

@@ -137,6 +137,18 @@ async function extractTabContent(tabId) {
   });
 }
 
+async function extractStructuredData(tabId) {
+  return new Promise((resolve) => {
+    chrome.tabs.sendMessage(tabId, { action: "getStructuredData" }, (response) => {
+      if (chrome.runtime.lastError) {
+        resolve(null);
+      } else {
+        resolve(response?.structuredData || null);
+      }
+    });
+  });
+}
+
 async function savContext() {
   const saveBtn = document.getElementById("save-btn");
   saveBtn.disabled = true;
@@ -153,15 +165,24 @@ async function savContext() {
     }
 
     const tabs = [];
+    const structuredTabs = [];
+
     for (const checkbox of checkboxes) {
       const tabId = parseInt(checkbox.dataset.tabId);
       const content = await extractTabContent(tabId);
+      const structuredData = await extractStructuredData(tabId);
 
+      // Existing payload (backward compatible)
       tabs.push({
         url: checkbox.dataset.url,
         title: checkbox.dataset.title,
         content: content || "No content extracted"
       });
+
+      // New structured data
+      if (structuredData) {
+        structuredTabs.push(structuredData);
+      }
     }
 
     const payload = {
@@ -172,6 +193,18 @@ async function savContext() {
         windowId: (await chrome.windows.getCurrent()).id
       }
     };
+
+    // ADD structured data alongside existing payload (IMPORTANT: DO NOT REPLACE)
+    if (structuredTabs.length > 0) {
+      payload.structuredData = {
+        source: "chrome",
+        sessionId: `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        timestamp: Date.now(),
+        chrome: {
+          tabs: structuredTabs
+        }
+      };
+    }
 
     const token = await chrome.storage.local.get("clerkToken");
     const response = await fetch(`${BACKEND_URL}/save`, {
@@ -191,7 +224,7 @@ async function savContext() {
 
     hideStatus();
 
-    // Show summary
+    // Show summary (existing functionality preserved)
     const card = document.getElementById("summary-card");
     document.getElementById("summary-text").textContent = result.userSummary || "Context saved successfully!";
     card.classList.add("show");

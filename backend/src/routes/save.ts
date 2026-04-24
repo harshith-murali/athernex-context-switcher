@@ -8,6 +8,7 @@ const router = Router();
 const AI_DOMAINS = [
   "claude.ai",
   "chat.openai.com",
+  "chatgpt.com",
   "gemini.google.com",
   "cursor.sh",
   "perplexity.ai"
@@ -81,7 +82,7 @@ Please help me continue from where I left off.`;
 
 router.post("/save", async (req, res) => {
   try {
-    const { chrome } = req.body;
+    const { chrome, structuredData } = req.body;
     const userId = (req as any).userId; // From Clerk middleware
 
     if (!chrome?.tabs || chrome.tabs.length === 0) {
@@ -97,6 +98,82 @@ router.post("/save", async (req, res) => {
     const userSummary = generateSummary(processedTabs);
     const primingPrompt = generatePrimingPrompt(processedTabs);
 
+    // Enrich structured data with MCP extractors (YouTube transcripts, etc)
+    let enrichedStructuredData = structuredData;
+
+    if (structuredData?.chrome?.tabs) {
+      enrichedStructuredData = {
+        ...structuredData,
+        chrome: {
+          tabs: await Promise.all(
+            structuredData.chrome.tabs.map(async (tab: any) => {
+              // YouTube: Always try to fetch transcript via MCP
+              if (tab.url.includes("youtube.com")) {
+                try {
+                  const structured = await getStructuredContent(tab.url);
+                  if (structured) {
+                    return {
+                      ...tab,
+                      content: structured.content,
+                      transcript: structured.content,
+                      source: "youtube_mcp"
+                    };
+                  }
+                } catch (e) {
+                  console.error("MCP extraction for YouTube failed:", e);
+                }
+              }
+              return tab;
+            })
+          )
+        }
+      };
+    } else if (chrome?.tabs) {
+      // If no structuredData provided, create it from chrome tabs and enrich with MCP
+      const enrichedTabs = await Promise.all(
+        chrome.tabs.map(async (tab: any) => {
+          const tabData: any = {
+            url: tab.url,
+            title: tab.title,
+            isAITab: isAITab(tab.url)
+          };
+
+          if (tabData.isAITab && tab.content) {
+            // For AI tabs, try to extract messages from content
+            tabData.content = tab.content.slice(0, 500);
+          } else if (!tabData.isAITab) {
+            // For non-AI tabs, especially YouTube, try MCP extraction
+            if (tab.url.includes("youtube.com")) {
+              try {
+                const structured = await getStructuredContent(tab.url);
+                if (structured) {
+                  tabData.content = structured.content;
+                  tabData.transcript = structured.content;
+                  tabData.source = "youtube_mcp";
+                }
+              } catch (e) {
+                console.error("MCP YouTube extraction failed:", e);
+                tabData.content = tab.content?.slice(0, 500) || "";
+              }
+            } else {
+              tabData.content = tab.content?.slice(0, 500) || "";
+            }
+          }
+
+          return tabData;
+        })
+      );
+
+      enrichedStructuredData = {
+        source: "chrome",
+        sessionId: `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        timestamp: Date.now(),
+        chrome: {
+          tabs: enrichedTabs
+        }
+      };
+    }
+
     // Save to MongoDB
     const session = new Session({
       sessionId,
@@ -108,7 +185,8 @@ router.post("/save", async (req, res) => {
       },
       userSummary,
       primingPrompt,
-      tabs: processedTabs
+      tabs: processedTabs,
+      structuredData: enrichedStructuredData || undefined
     });
 
     await session.save();

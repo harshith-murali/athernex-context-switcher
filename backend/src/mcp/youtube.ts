@@ -1,28 +1,35 @@
 import { StructuredContent } from "./router.js";
 
 export async function youtubeExtract(url: string): Promise<StructuredContent> {
+  console.log("🎥 [YouTube] Starting extraction for URL:", url);
   try {
     const videoId = extractVideoId(url);
+    console.log("🎥 [YouTube] Extracted videoId:", videoId);
     if (!videoId) {
       throw new Error("Invalid YouTube URL");
     }
 
-    const transcript = await fetchTranscript(videoId);
-    const title = await getVideoTitle(videoId);
+    console.log("🎥 [YouTube] Fetching video metadata and description");
+    const { title, description } = await getVideoMetadata(videoId);
+    console.log("🎥 [YouTube] Video title:", title);
 
-    return {
-      source: "youtube",
+    const result: StructuredContent = {
+      source: "youtube" as const,
       title: `YouTube: ${title}`,
       metadata: { url, videoId },
-      content: transcript
+      content: description
     };
+    console.log("🎥 [YouTube] Successfully extracted, content length:", description.length);
+    return result;
   } catch (error) {
-    return {
-      source: "youtube",
+    console.error("❌ [YouTube] Error during extraction:", error);
+    const result: StructuredContent = {
+      source: "youtube" as const,
       title: `YouTube: ${url.split("/").pop()}`,
       metadata: { url, error: String(error) },
-      content: `[Error fetching transcript: ${String(error)}]`
+      content: `[Error fetching content: ${String(error)}]`
     };
+    return result;
   }
 }
 
@@ -39,70 +46,30 @@ function extractVideoId(url: string): string | null {
   return null;
 }
 
-async function fetchTranscript(videoId: string): Promise<string> {
-  const response = await fetch(
-    `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch transcript: ${response.statusText}`);
-  }
-
-  const xml = await response.text();
-  return parseTranscriptXml(xml);
-}
-
-function parseTranscriptXml(xml: string): string {
-  const textRegex = /<text start="([^"]*)"[^>]*>([^<]*)<\/text>/g;
-  const lines: string[] = [];
-  let match;
-
-  while ((match = textRegex.exec(xml)) !== null) {
-    const timestamp = formatTimestamp(parseFloat(match[1]));
-    const text = decodeHtml(match[2]);
-    if (text.trim()) {
-      lines.push(`[${timestamp}] ${text}`);
-    }
-  }
-
-  return lines.join("\n");
-}
-
-function formatTimestamp(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-  }
-  return `${minutes}:${String(secs).padStart(2, "0")}`;
-}
-
-function decodeHtml(text: string): string {
-  const entities: Record<string, string> = {
-    "&amp;": "&",
-    "&lt;": "<",
-    "&gt;": ">",
-    "&quot;": '"',
-    "&#39;": "'",
-    "&nbsp;": " "
-  };
-
-  return text.replace(/&[^;]+;/g, (match) => entities[match] || match);
-}
-
-async function getVideoTitle(videoId: string): Promise<string> {
+async function getVideoMetadata(videoId: string): Promise<{
+  title: string;
+  description: string;
+}> {
   try {
-    const response = await fetch(
-      `https://www.youtube.com/oembed?url=https://youtube.com/watch?v=${videoId}&format=json`
-    );
+    const oembedUrl = `https://www.youtube.com/oembed?url=https://youtube.com/watch?v=${videoId}&format=json`;
+    console.log("🎥 [Metadata] Fetching from oEmbed:", oembedUrl);
+    const response = await fetch(oembedUrl);
+    console.log("🎥 [Metadata] oEmbed response status:", response.status);
     if (response.ok) {
-      const data = await response.json();
-      return data.title;
+      const data = await response.json() as any;
+      console.log("🎥 [Metadata] Retrieved title:", data.title);
+      return {
+        title: data.title,
+        description: data.title
+      };
     }
-  } catch {
-    // Fallback if oEmbed fails
+  } catch (err) {
+    console.warn("🎥 [Metadata] oEmbed fetch failed:", err);
   }
-  return videoId;
+
+  console.log("🎥 [Metadata] Using videoId as fallback");
+  return {
+    title: videoId,
+    description: `YouTube video: ${videoId}`
+  };
 }

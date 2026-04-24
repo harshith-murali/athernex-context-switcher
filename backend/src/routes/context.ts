@@ -19,6 +19,7 @@ router.get("/context", async (req, res) => {
       userSummary: session.userSummary,
       primingPrompt: session.primingPrompt,
       tabs: session.tabs,
+      structuredData: session.structuredData,
       timestamp: session.timestamp
     });
   } catch (err) {
