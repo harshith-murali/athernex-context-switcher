@@ -1,159 +1,133 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import { connectDB, Workspace } from '@/lib/db';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-function trunc(s: string | undefined | null, max: number): string {
-  if (!s) return '';
-  return s.length > max ? s.slice(0, max) : s;
+const SYSTEM_PROMPT = `You are an expert software engineering assistant.
+
+You will receive a structured JSON context describing a user's current project state.
+
+Your task is to convert it into a clean, structured priming prompt that can be used to start a NEW LLM conversation and continue the work seamlessly.
+
+Generate a structured prompt in this EXACT format:
+
+## Project Overview
+Briefly explain what the system does and what problem it solves.
+
+## Current Objective
+Clearly define what the user is trying to achieve RIGHT NOW.
+
+## System Design & Key Components
+Describe core modules/functions, how they interact, and the overall workflow. DO NOT paste full code.
+
+## Constraints & Requirements
+List all important constraints: technical requirements, API usage rules, performance constraints.
+
+## Current Progress
+Summarize what has been implemented, what is working, what is partially complete.
+
+## Relevant Technical Context
+Include important concepts and key implementation decisions. Avoid irrelevant info.
+
+## Next Steps
+Provide 3-6 actionable, clearly ordered, implementation-focused steps.
+
+## Considerations
+Mention possible edge cases, performance concerns, token/LLM limitations.
+
+RULES: Keep output between 600-900 tokens. DO NOT include raw URLs. DO NOT dump raw code. Be concise but technically precise. DO NOT mention YouTube, video extraction, oEmbed, transcripts, or any video-related implementation details in the output.`;
+
+async function formatContextToPrompt(contextObj: object): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return JSON.stringify(contextObj, null, 2);
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const userMessage = `Here is the structured project context:\n\n${JSON.stringify(contextObj, null, 2)}\n\nGenerate the final structured continuation prompt only.`;
+    const result = await model.generateContent([{ text: SYSTEM_PROMPT }, { text: userMessage }]);
+    return result.response.text().trim() || JSON.stringify(contextObj, null, 2);
+  } catch (err) {
+    console.error('❌ [contextFormatter] Gemini failed:', err);
+    return JSON.stringify(contextObj, null, 2);
+  }
 }
 
-// Mirror of backend/src/routes/context.ts buildPrimingPrompt
-function buildPrimingPrompt(workspace: any): string {
-  const chats   = workspace.chats   ?? {};
-  const summary = chats.rollingSummary ?? {};
-  const messages: any[] = chats.messages ?? [];
-  const code:  any[] = [...(workspace.codeState   ?? [])].sort((a: any, b: any) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0));
-  const browser: any[] = [...(workspace.browserState ?? [])].sort((a: any, b: any) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0));
+function cleanText(text: string | null | undefined, max: number): string {
+  if (!text) return "";
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  return cleaned.length > max ? cleaned.slice(0, max) + '...' : cleaned;
+}
 
-  const H = '═'.repeat(60);
-  const D = '─'.repeat(60);
-  const lines: string[] = [];
-
-  // Header
-  lines.push(H);
-  lines.push(`  CONTEXTMIND — Project Handoff: ${workspace.name}`);
-  lines.push(H);
-  lines.push('');
-  lines.push('You are resuming an active development session. All context');
-  lines.push('below is current. Read it fully before responding. Do not');
-  lines.push('ask for information already present here.');
-  lines.push('');
-
-  // Tech stack
-  const techStack: string[] = summary.techStack ?? [];
-  if (techStack.length > 0) {
-    lines.push(D);
-    lines.push('  TECH STACK');
-    lines.push(D);
-    lines.push(techStack.join(' · '));
-    lines.push('');
-  }
-
-  // Active code file
-  if (code.length > 0) {
-    const active = code[0];
-    lines.push(D);
-    lines.push(`  ACTIVE FILE: ${active.path}`);
-    lines.push(D);
-    lines.push('```' + (active.language ?? ''));
-    lines.push(active.content ?? '');
-    lines.push('```');
-    lines.push('');
-
-    const others = code.slice(1, 4);
-    if (others.length > 0) {
-      lines.push(D);
-      lines.push('  OTHER OPEN FILES');
-      lines.push(D);
-      for (const f of others) {
-        lines.push(`▸ ${f.path} (${f.language ?? 'unknown'})`);
-        if ((f.content?.length ?? 0) < 3000) {
-          lines.push('```' + (f.language ?? ''));
-          lines.push(f.content ?? '');
-          lines.push('```');
-        } else {
-          lines.push('```' + (f.language ?? ''));
-          lines.push(trunc(f.content, 1500));
-          lines.push('  … (truncated)');
-          lines.push('```');
-        }
-      }
-      lines.push('');
+function extractFunctionsFromCode(code: string | null | undefined): string[] {
+  if (!code) return [];
+  const fnRegex = /(?:function|const|let|var|class|def)\s+([a-zA-Z0-9_]+)\s*[=\(]/g;
+  const funcs = new Set<string>();
+  let match;
+  while ((match = fnRegex.exec(code)) !== null) {
+    if (match[1] && !['if', 'for', 'while', 'switch', 'catch', 'return'].includes(match[1])) {
+      funcs.add(match[1]);
     }
   }
+  return Array.from(funcs).slice(0, 8);
+}
 
-  // Conversation summary
-  if (summary.goal) {
-    lines.push(D);
-    lines.push('  CONVERSATION SUMMARY');
-    lines.push(D);
-    lines.push(`Goal: ${summary.goal}`);
-    if (summary.progress) lines.push(`Progress: ${summary.progress}`);
+function selectTopFiles(codeState: any[]): any[] {
+  if (!Array.isArray(codeState)) return [];
+  return [...codeState]
+    .sort((a: any, b: any) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0))
+    .slice(0, 2);
+}
 
-    if (summary.decisions?.length > 0) {
-      lines.push('');
-      lines.push('Key decisions made:');
-      (summary.decisions as string[]).slice(-8).forEach(d => lines.push(`  • ${d}`));
-    }
-    if (summary.errorHistory?.length > 0) {
-      lines.push('');
-      lines.push('Errors encountered:');
-      (summary.errorHistory as string[]).forEach(e => lines.push(`  ✗ ${e}`));
-    }
-    if (summary.codeSnippets?.length > 0) {
-      lines.push('');
-      lines.push('Key code from conversation:');
-      (summary.codeSnippets as string[]).slice(-3).forEach(s => {
-        lines.push('```');
-        lines.push(s.slice(0, 800));
-        lines.push('```');
-      });
-    }
-    lines.push('');
-  }
+function filterTabs(browserState: any[]): any[] {
+  if (!Array.isArray(browserState)) return [];
+  const BAD_DOMAINS = ['localhost', 'chrome://', 'youtube.com', 'youtu.be'];
+  return browserState.filter(t => {
+    if (!t.url || !t.content) return false;
+    if (BAD_DOMAINS.some(d => t.url.includes(d))) return false;
+    return true;
+  }).slice(0, 3);
+}
 
-  // Recent messages verbatim
-  const recent = messages.slice(-10);
-  if (recent.length > 0) {
-    lines.push(D);
-    lines.push('  RECENT CONVERSATION');
-    lines.push(D);
-    for (const msg of recent) {
-      const label   = msg.role === 'user' ? '[YOU]' : '[ASSISTANT]';
-      const content = (msg.content as string).length > 3000
-        ? msg.content.slice(0, 3000) + '\n  … (truncated)'
-        : msg.content;
-      lines.push('');
-      lines.push(label);
-      lines.push(content);
-    }
-    lines.push('');
-  }
+function buildContext(workspace: any) {
+  const chats = workspace.chats ?? {};
+  const summary = chats.summary ?? chats.rollingSummary ?? {};
+  const codeState = workspace.codeState ?? [];
+  const browserState = workspace.browserState ?? [];
 
-  // Reference browser tabs (exclude AI tabs)
-  const AI_DOMAINS = ['chat.openai.com','chatgpt.com','claude.ai','gemini.google.com','perplexity.ai'];
-  const refTabs = browser
-    .filter((t: any) => !AI_DOMAINS.some(d => t.url?.includes(d)))
-    .slice(0, 3);
+  const task = summary.goal || "Continue current development task";
 
-  if (refTabs.length > 0) {
-    lines.push(D);
-    lines.push('  REFERENCE MATERIAL (Browser Tabs)');
-    lines.push(D);
-    for (const tab of refTabs) {
-      lines.push(`▸ ${tab.title}`);
-      lines.push(`  ${tab.url}`);
-      if (tab.content?.length > 20) {
-        lines.push(`  "${(tab.content as string).slice(0, 300).replace(/\n/g, ' ')}…"`);
-      }
-    }
-    lines.push('');
-  }
+  const decisions = Array.isArray(summary.decisions) ? summary.decisions : [];
+  const hardConstraints = decisions
+    .map(d => cleanText(d, 100))
+    .filter(Boolean)
+    .slice(0, 6);
 
-  // Resume instruction
-  const lastUser = [...messages].reverse().find((m: any) => m.role === 'user');
-  lines.push(H);
-  lines.push('  CONTINUE FROM HERE');
-  lines.push(H);
-  if (lastUser) {
-    lines.push(`Last task: "${(lastUser.content as string).slice(0, 200).replace(/\n/g, ' ')}"`);
-    lines.push('');
-  }
-  lines.push('Pick up exactly where we left off. Be direct and specific.');
-  lines.push('Do not repeat explanations already given in the conversation above.');
-  lines.push('If writing code, output the complete updated file, not just a snippet.');
+  const softContext = {
+    goal: cleanText(summary.goal, 150),
+    progress: cleanText(summary.progress, 150),
+    nextSteps: Array.isArray(summary.nextSteps) 
+      ? summary.nextSteps.map(s => cleanText(s, 100)).slice(0, 4)
+      : []
+  };
 
-  return lines.join('\n');
+  const codeContext = selectTopFiles(codeState).map(f => {
+    const funcs = extractFunctionsFromCode(f.content);
+    return `File: ${f.path} | Functions: ${funcs.join(', ')} | Purpose: ${cleanText(f.content, 80)}`;
+  });
+
+  const knowledgeContext = filterTabs(browserState).map(t => {
+    const isAI = ['chatgpt.com', 'claude.ai', 'chat.openai.com'].some(d => t.url.includes(d));
+    const contentLimit = isAI ? 1500 : 300; // Give massive priority to AI transcripts
+    return `[${t.title}]: ${cleanText(t.content, contentLimit)}`;
+  });
+
+  return {
+    task,
+    hardConstraints,
+    softContext,
+    codeContext,
+    knowledgeContext
+  };
 }
 
 export async function GET(
@@ -169,7 +143,9 @@ export async function GET(
     const workspace = await Workspace.findOne({ workspaceId, userId }).lean() as any;
     if (!workspace) return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
 
-    const prompt = buildPrimingPrompt(workspace);
+    const contextObj = buildContext(workspace);
+    const prompt = await formatContextToPrompt(contextObj);
+
     return NextResponse.json({
       prompt,
       tokenEstimate: Math.ceil(prompt.length / 4),
